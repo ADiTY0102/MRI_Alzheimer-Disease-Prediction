@@ -78,22 +78,29 @@ const UploadPage = () => {
       }
 
       // Call Hugging Face Inference API
+      console.log("Calling Hugging Face API...");
       const apiResponse = await fetch(
         "https://api-inference.huggingface.co/models/codeToEarn/alzheimer-6class",
         {
           method: "POST",
           headers: {
             Authorization: "Bearer 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",
+            "Content-Type": "application/octet-stream",
           },
           body: imageBlob,
         }
       );
 
+      console.log("API Response status:", apiResponse.status);
+      
       if (!apiResponse.ok) {
-        throw new Error(`API request failed: ${apiResponse.statusText}`);
+        const errorText = await apiResponse.text();
+        console.error("API Error:", errorText);
+        throw new Error(`API request failed: ${apiResponse.status} - ${errorText}`);
       }
 
       const predictions = await apiResponse.json();
+      console.log("Predictions received:", predictions);
       
       // Process predictions
       const sortedPredictions = predictions.sort((a: any, b: any) => b.score - a.score);
