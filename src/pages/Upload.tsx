@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
+import { Client } from "@gradio/client";
 
 const UploadPage = () => {
   const navigate = useNavigate();
@@ -57,126 +58,81 @@ const UploadPage = () => {
     }
   };
 
-  const handlePredict = async () => {
-    if (!previewUrl) {
-      toast.error("Please upload or provide an image URL first");
-      return;
-    }
+  // Only the prediction-related changes shown
 
-    setIsLoading(true);
+const handlePredict = async () => {
+  if (!previewUrl && !imageFile) {
+    toast.error("Please upload or provide an image URL first");
+    return;
+  }
 
-    try {
-      // Prepare image for API
-      let imageBlob: Blob;
-      
-      if (imageFile) {
-        imageBlob = imageFile;
-      } else {
-        // Fetch image from URL
-        const response = await fetch(previewUrl);
-        imageBlob = await response.blob();
-      }
+  setIsLoading(true);
+  try {
+    console.log("Connecting to Gradio Space API...");
+    const client = await Client.connect("codeToEarn/alzheimer-6class");
+    console.log("Connected to Gradio Space API successfully.");
 
-      // Call Hugging Face Inference API
-      console.log("Calling Hugging Face API...");
-      const apiResponse = await fetch(
-        "https://api-inference.huggingface.co/models/codeToEarn/alzheimer-6class",
-        {
-          method: "POST",
-          headers: {
-            Authorization: "Bearer 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",
-            "Content-Type": "application/octet-stream",
-          },
-          body: imageBlob,
-        }
-      );
+    // Prepare image (Blob or URL)
+    const imageBlob = imageFile ?? (await fetch(previewUrl!).then(r => r.blob()));
+    console.log("Prepared image for prediction:", imageBlob);
 
-      console.log("API Response status:", apiResponse.status);
-      
-      if (!apiResponse.ok) {
-        const errorText = await apiResponse.text();
-        console.error("API Error:", errorText);
-        throw new Error(`API request failed: ${apiResponse.status} - ${errorText}`);
-      }
+    // Call the Gradio predict API
+    const result = await client.predict("/predict", { image: imageBlob });
+    console.log("Gradio API response:", result);
+    console.log("Gradio response data:", result.data);
 
-      const predictions = await apiResponse.json();
-      console.log("Predictions received:", predictions);
-      
-      // Process predictions
-      const sortedPredictions = predictions.sort((a: any, b: any) => b.score - a.score);
-      const topPrediction = sortedPredictions[0];
-      
-      // Map class labels to descriptions and recommendations
-      const classDescriptions: Record<string, string> = {
-        "AD": "Alzheimer's Disease → Progressive neurodegenerative disorder causing memory loss and cognitive decline.",
-        "CN": "Cognitively Normal → Healthy control group (no signs of dementia).",
-        "EMCI": "Early Mild Cognitive Impairment → Very early stage of cognitive decline.",
-        "LMCI": "Late Mild Cognitive Impairment → More advanced stage of cognitive decline.",
-        "MCI": "Mild Cognitive Impairment → Noticeable cognitive decline without severe impairment."
-      };
+    const predictedClass = result.data[0];
+    
+    // Parse confidence safely
+    const rawConfidence = result.data[1]; // e.g., "73.15%"
+    const confidence = parseFloat(rawConfidence?.toString().replace("%", "")) || 0;
 
-      const classRecommendations: Record<string, string[]> = {
-        "AD": [
-          "Consult with a neurologist immediately",
-          "Consider cognitive therapy and medical treatment",
-          "Ensure a safe living environment with support",
-          "Plan for long-term care and legal arrangements"
-        ],
-        "CN": [
-          "Continue regular health check-ups",
-          "Maintain a healthy lifestyle with balanced diet",
-          "Engage in cognitive activities and regular exercise",
-          "Monitor cognitive health annually"
-        ],
-        "EMCI": [
-          "Schedule comprehensive neurological evaluation",
-          "Begin cognitive training exercises",
-          "Monitor progression with regular assessments",
-          "Discuss preventive strategies with healthcare provider"
-        ],
-        "LMCI": [
-          "Consult with a specialist for treatment options",
-          "Implement cognitive rehabilitation strategies",
-          "Consider participation in clinical trials",
-          "Establish support system and care planning"
-        ],
-        "MCI": [
-          "Regular monitoring and cognitive assessments",
-          "Engage in brain-healthy activities",
-          "Manage cardiovascular risk factors",
-          "Discuss medication options with physician"
-        ]
-      };
+    const explanation = result.data[2];
 
-      // Create probabilities object
-      const probabilities: Record<string, number> = {};
-      sortedPredictions.forEach((pred: any) => {
-        probabilities[pred.label] = pred.score * 100;
-      });
+    const probabilities: Record<string, number> = {
+      [predictedClass]: confidence,
+    };
 
-      const predictionResult = {
-        imageUrl: previewUrl,
-        predictedClass: topPrediction.label,
-        confidence: topPrediction.score * 100,
-        probabilities,
-        description: classDescriptions[topPrediction.label] || "Classification result",
-        recommendations: classRecommendations[topPrediction.label] || [
-          "Consult with a healthcare professional for detailed assessment"
-        ]
-      };
+    const classDescriptions: Record<string, string> = {
+      AD: "Alzheimer's Disease → Severe cognitive decline and memory loss.",
+      CN: "Cognitively Normal → Healthy control group (no signs of dementia).",
+      ECMI: "Early Cognitive/Mild Impairment → Early signs of cognitive decline.",
+      EMCI: "Early Mild Cognitive Impairment → Mild memory problems, not dementia.",
+      LCMI: "Late Cognitive/Mild Impairment → Advanced cognitive decline.",
+      LMCI: "Late Mild Cognitive Impairment → More pronounced memory issues.",
+    };
 
-      // Store prediction in sessionStorage
-      sessionStorage.setItem("predictionResult", JSON.stringify(predictionResult));
-      
-      toast.success("Prediction completed successfully!");
-      navigate("/report");
-    } catch (error) {
-      toast.error("Prediction failed. Please try again.");
-      console.error(error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    const classRecommendations: Record<string, string[]> = {
+      AD: ["Consult a neurologist", "Medication & therapy", "Supportive environment", "Monitor regularly"],
+      CN: ["Regular health check-ups", "Healthy lifestyle", "Cognitive exercises", "Annual monitoring"],
+      ECMI: ["Cognitive assessments", "Memory training", "Social interaction", "Monitor progression"],
+      EMCI: ["Consult healthcare provider", "Brain-healthy habits", "Track changes", "Early intervention"],
+      LCMI: ["Specialist advice", "Safety measures", "Support groups", "Monitor decline"],
+      LMCI: ["Medical check-ups", "Cognitive therapies", "Maintain routines", "Monitor for dementia"],
+    };
+
+    const predictionResult = {
+      imageUrl: previewUrl || URL.createObjectURL(imageBlob),
+      predictedClass,
+      confidence, // already a number
+      probabilities,
+      description: explanation || classDescriptions[predictedClass] || "",
+      recommendations: classRecommendations[predictedClass] || [],
+    };
+
+    console.log("Final prediction result to be saved:", predictionResult);
+
+    sessionStorage.setItem("predictionResult", JSON.stringify(predictionResult));
+    toast.success("Prediction completed!");
+    navigate("/report");
+  } catch (error) {
+    console.error("Prediction failed:", error);
+    toast.error("Prediction failed. Please try again.");
+  } finally {
+    setIsLoading(false);
+  }
+};
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-accent/20 to-background">
@@ -218,22 +174,19 @@ const UploadPage = () => {
                 onDragLeave={handleDrag}
                 onDragOver={handleDrag}
                 onDrop={handleDrop}
-                className={`
-                  relative border-2 border-dashed rounded-xl p-12 text-center transition-all duration-300
-                  ${dragActive 
-                    ? "border-primary bg-primary/5 scale-[1.02]" 
+                className={`relative border-2 border-dashed rounded-xl p-12 text-center transition-all duration-300 ${
+                  dragActive
+                    ? "border-primary bg-primary/5 scale-[1.02]"
                     : "border-border hover:border-primary/50 hover:bg-accent/30"
-                  }
-                `}
+                }`}
               >
                 <input
                   type="file"
-                  id="file-upload"
                   accept="image/*"
                   onChange={handleFileChange}
                   className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                 />
-                
+
                 {previewUrl ? (
                   <div className="space-y-4 animate-fade-in-scale">
                     <img
@@ -279,9 +232,7 @@ const UploadPage = () => {
                   <div className="w-full border-t border-border"></div>
                 </div>
                 <div className="relative flex justify-center text-sm">
-                  <span className="px-4 bg-card text-muted-foreground font-medium">
-                    OR
-                  </span>
+                  <span className="px-4 bg-card text-muted-foreground font-medium">OR</span>
                 </div>
               </div>
 
@@ -312,7 +263,7 @@ const UploadPage = () => {
               {/* Predict Button */}
               <Button
                 onClick={handlePredict}
-                disabled={!previewUrl || isLoading}
+                disabled={!previewUrl && !imageFile || isLoading}
                 className="w-full h-12 text-lg font-semibold bg-gradient-to-r from-primary to-primary-dark hover:opacity-90 transition-all duration-300 shadow-md hover:shadow-lg"
               >
                 {isLoading ? (
@@ -329,22 +280,6 @@ const UploadPage = () => {
               </Button>
             </div>
           </Card>
-
-          {/* Info Cards */}
-          <div className="grid md:grid-cols-3 gap-4 mt-8">
-            <Card className="p-6 text-center hover:shadow-lg transition-all duration-300">
-              <div className="text-3xl font-bold text-primary mb-2">98%+</div>
-              <div className="text-sm text-muted-foreground">Accuracy Rate</div>
-            </Card>
-            <Card className="p-6 text-center hover:shadow-lg transition-all duration-300">
-              <div className="text-3xl font-bold text-primary mb-2">&lt;2s</div>
-              <div className="text-sm text-muted-foreground">Analysis Time</div>
-            </Card>
-            <Card className="p-6 text-center hover:shadow-lg transition-all duration-300">
-              <div className="text-3xl font-bold text-primary mb-2">6</div>
-              <div className="text-sm text-muted-foreground">Detection Classes</div>
-            </Card>
-          </div>
         </div>
       </main>
     </div>

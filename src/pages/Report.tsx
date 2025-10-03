@@ -48,12 +48,19 @@ const ReportPage = () => {
     toast.info("Generating PDF...");
 
     try {
+      // Temporarily set solid background for PDF capture
+      const originalBg = reportRef.current.style.backgroundColor;
+      reportRef.current.style.backgroundColor = "#fff";
+
       const canvas = await html2canvas(reportRef.current, {
         scale: 2,
         useCORS: true,
         logging: false,
-        backgroundColor: "#ffffff",
+        backgroundColor: "#fff", // ensure solid white background
       });
+
+      // Restore original background
+      reportRef.current.style.backgroundColor = originalBg;
 
       const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF({
@@ -72,7 +79,7 @@ const ReportPage = () => {
 
       pdf.addImage(imgData, "PNG", imgX, imgY, imgWidth * ratio, imgHeight * ratio);
       pdf.save(`NeuroScan-Report-${new Date().toISOString().split("T")[0]}.pdf`);
-      
+
       toast.success("Report downloaded successfully!");
     } catch (error) {
       toast.error("Failed to generate PDF");
@@ -100,11 +107,11 @@ const ReportPage = () => {
     );
   }
 
-  const severityColor = classInfo[prediction.predictedClass]?.severity === "high" 
-    ? "text-destructive" 
+  const severityColor = classInfo[prediction.predictedClass]?.severity === "high"
+    ? "text-destructive"
     : classInfo[prediction.predictedClass]?.severity === "medium"
-    ? "text-yellow-600"
-    : "text-secondary";
+      ? "text-yellow-600"
+      : "text-secondary";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-accent/10 to-background">
@@ -198,9 +205,9 @@ const ReportPage = () => {
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Confidence Level</p>
                   <div className="flex items-center gap-3">
-                    <Progress value={prediction.confidence} className="flex-1" />
+                    <Progress value={prediction.confidence || 0} className="flex-1" />
                     <span className="text-2xl font-bold text-primary">
-                      {prediction.confidence.toFixed(2)}%
+                      {(prediction.confidence || 0).toFixed(2)}%
                     </span>
                   </div>
                 </div>
