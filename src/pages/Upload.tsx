@@ -66,33 +66,100 @@ const UploadPage = () => {
     setIsLoading(true);
 
     try {
-      // Simulate ML prediction (replace with actual API call)
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Prepare image for API
+      let imageBlob: Blob;
       
-      // Mock prediction data
-      const mockPrediction = {
-        imageUrl: previewUrl,
-        predictedClass: "CN",
-        confidence: 98.75,
-        probabilities: {
-          AD: 0.5,
-          CN: 98.75,
-          ECMI: 0.2,
-          EMCI: 0.3,
-          LCMI: 0.15,
-          LMCI: 0.1
-        },
-        description: "Cognitively Normal → Healthy control group (no signs of dementia).",
-        recommendations: [
+      if (imageFile) {
+        imageBlob = imageFile;
+      } else {
+        // Fetch image from URL
+        const response = await fetch(previewUrl);
+        imageBlob = await response.blob();
+      }
+
+      // Call Hugging Face Inference API
+      const apiResponse = await fetch(
+        "https://api-inference.huggingface.co/models/codeToEarn/alzheimer-6class",
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer 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",
+          },
+          body: imageBlob,
+        }
+      );
+
+      if (!apiResponse.ok) {
+        throw new Error(`API request failed: ${apiResponse.statusText}`);
+      }
+
+      const predictions = await apiResponse.json();
+      
+      // Process predictions
+      const sortedPredictions = predictions.sort((a: any, b: any) => b.score - a.score);
+      const topPrediction = sortedPredictions[0];
+      
+      // Map class labels to descriptions and recommendations
+      const classDescriptions: Record<string, string> = {
+        "AD": "Alzheimer's Disease → Progressive neurodegenerative disorder causing memory loss and cognitive decline.",
+        "CN": "Cognitively Normal → Healthy control group (no signs of dementia).",
+        "EMCI": "Early Mild Cognitive Impairment → Very early stage of cognitive decline.",
+        "LMCI": "Late Mild Cognitive Impairment → More advanced stage of cognitive decline.",
+        "MCI": "Mild Cognitive Impairment → Noticeable cognitive decline without severe impairment."
+      };
+
+      const classRecommendations: Record<string, string[]> = {
+        "AD": [
+          "Consult with a neurologist immediately",
+          "Consider cognitive therapy and medical treatment",
+          "Ensure a safe living environment with support",
+          "Plan for long-term care and legal arrangements"
+        ],
+        "CN": [
           "Continue regular health check-ups",
           "Maintain a healthy lifestyle with balanced diet",
           "Engage in cognitive activities and regular exercise",
           "Monitor cognitive health annually"
+        ],
+        "EMCI": [
+          "Schedule comprehensive neurological evaluation",
+          "Begin cognitive training exercises",
+          "Monitor progression with regular assessments",
+          "Discuss preventive strategies with healthcare provider"
+        ],
+        "LMCI": [
+          "Consult with a specialist for treatment options",
+          "Implement cognitive rehabilitation strategies",
+          "Consider participation in clinical trials",
+          "Establish support system and care planning"
+        ],
+        "MCI": [
+          "Regular monitoring and cognitive assessments",
+          "Engage in brain-healthy activities",
+          "Manage cardiovascular risk factors",
+          "Discuss medication options with physician"
+        ]
+      };
+
+      // Create probabilities object
+      const probabilities: Record<string, number> = {};
+      sortedPredictions.forEach((pred: any) => {
+        probabilities[pred.label] = pred.score * 100;
+      });
+
+      const predictionResult = {
+        imageUrl: previewUrl,
+        predictedClass: topPrediction.label,
+        confidence: topPrediction.score * 100,
+        probabilities,
+        description: classDescriptions[topPrediction.label] || "Classification result",
+        recommendations: classRecommendations[topPrediction.label] || [
+          "Consult with a healthcare professional for detailed assessment"
         ]
       };
 
       // Store prediction in sessionStorage
-      sessionStorage.setItem("predictionResult", JSON.stringify(mockPrediction));
+      sessionStorage.setItem("predictionResult", JSON.stringify(predictionResult));
       
       toast.success("Prediction completed successfully!");
       navigate("/report");
