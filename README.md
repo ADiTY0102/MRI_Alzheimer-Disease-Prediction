@@ -156,11 +156,10 @@ npm run dev
 ## Screenshots
 
 ### Upload Page
-![Upload Page](https://raw.githubusercontent.com/yourusername/neuroscan-ai/main/screenshots/upload.png)
+![Upload Page](public/upload.png)
 
-### Report Page
-![Report Page](https://raw.githubusercontent.com/yourusername/neuroscan-ai/main/screenshots/report.png)
-
+### Report Page!
+![Upload Page](public/report.png)
 
 ---
 
